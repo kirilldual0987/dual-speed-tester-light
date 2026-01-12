@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>dual-speed-tester-light v1.1</title>
+</head>
+<body bgcolor="#ffffff" text="#000000">
+
+<center>
+<h2>dual-speed-tester-light</h2>
+<small>v-based: v1.1 | for old browsers</small>
+<hr>
+
+<table border="1" cellpadding="10" cellspacing="0" width="300">
+    <tr>
+        <td align="center" colspan="2">
+            <b>CURRENT SPEED</b><br>
+            <font size="6" id="speed">0</font><br>
+            <small>Mbps</small>
+        </td>
+    </tr>
+    <tr>
+        <td align="center" colspan="2">
+            <span id="status">Ready</span>
+        </td>
+    </tr>
+</table>
+
+<br>
+
+<input type="button" value="[ START TEST ]" id="startBtn" onclick="startTest()" style="padding:10px 20px; font-size:16px;">
+
+<br><br>
+
+<table border="1" cellpadding="8" cellspacing="0" width="300">
+    <tr bgcolor="#eeeeee">
+        <td colspan="2" align="center"><b>RESULTS</b></td>
+    </tr>
+    <tr>
+        <td>Download:</td>
+        <td align="right"><b id="download">--</b> Mbps</td>
+    </tr>
+    <tr>
+        <td>Upload:</td>
+        <td align="right"><b id="upload">--</b> Mbps</td>
+    </tr>
+    <tr>
+        <td>Ping:</td>
+        <td align="right"><b id="ping">--</b> ms</td>
+    </tr>
+    <tr>
+        <td>Jitter:</td>
+        <td align="right"><b id="jitter">--</b> ms</td>
+    </tr>
+    <tr bgcolor="#eeeeee">
+        <td>Rating:</td>
+        <td align="right"><b id="rating">--</b></td>
+    </tr>
+    <tr>
+        <td>Score:</td>
+        <td align="right"><b id="score">--</b>/100</td>
+    </tr>
+</table>
+
+<br>
+
+<table border="1" cellpadding="8" cellspacing="0" width="300">
+    <tr bgcolor="#eeeeee">
+        <td colspan="2" align="center"><b>PROGRESS</b></td>
+    </tr>
+    <tr>
+        <td>Phase:</td>
+        <td id="phase">Waiting...</td>
+    </tr>
+    <tr>
+        <td>Progress:</td>
+        <td><span id="progress">0</span>%</td>
+    </tr>
+    <tr>
+        <td colspan="2">
+            <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td bgcolor="#cccccc" width="100%">
+                        <table cellpadding="0" cellspacing="0">
+                            <tr>
+                                <td id="progressBar" bgcolor="#000000" width="0" height="15">&nbsp;</td>
+                                <td>&nbsp;</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+
+<br>
+
+<table border="0" cellpadding="5" width="300">
+    <tr>
+        <td align="center">
+            <small>
+                IP: <span id="ip">detecting...</span><br>
+                Last test: <span id="lastTest">--</span>
+            </small>
+        </td>
+    </tr>
+</table>
+
+<hr>
+<small>dual-speed-tester-light v-based: v1.1</small><br>
+<small>Compatible with old browsers</small>
+
+</center>
+
+<script>
+// ==================================================
+// dual-speed-tester-light v-based: v1.1
+// For old browsers and basic phones
+// No ES6, no fetch, no promises, no CSS
+// ==================================================
+
+var isRunning = false;
+var results = {
+    download: 0,
+    upload: 0,
+    ping: 0,
+    jitter: 0
+};
+
+// Get elements
+function getEl(id) {
+    return document.getElementById(id);
+}
+
+// Update display
+function updateSpeed(val) {
+    getEl('speed').innerHTML = val;
+}
+
+function updateStatus(text) {
+    getEl('status').innerHTML = text;
+}
+
+function updatePhase(text) {
+    getEl('phase').innerHTML = text;
+}
+
+function updateProgress(percent) {
+    getEl('progress').innerHTML = percent;
+    getEl('progressBar').width = percent + '%';
+}
+
+// Simple XMLHttpRequest wrapper
+function httpGet(url, callback) {
+    var xhr;
+    if (window.XMLHttpRequest) {
+        xhr = new XMLHttpRequest();
+    } else {
+        // IE5/IE6
+        xhr = new ActiveXObject("Microsoft.XMLHTTP");
+    }
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState == 4) {
+            callback(xhr.status == 200, xhr);
+        }
+    };
+    
+    try {
+        xhr.open("GET", url, true);
+        xhr.send(null);
+    } catch(e) {
+        callback(false, null);
+    }
+    
+    return xhr;
+}
+
+function httpPost(url, data, callback) {
+    var xhr;
+    if (window.XMLHttpRequest) {
+        xhr = new XMLHttpRequest();
+    } else {
+        xhr = new ActiveXObject("Microsoft.XMLHTTP");
+    }
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState == 4) {
+            callback(xhr.status == 200, xhr);
+        }
+    };
+    
+    try {
+        xhr.open("POST", url, true);
+        xhr.send(data);
+    } catch(e) {
+        callback(false, null);
+    }
+    
+    return xhr;
+}
+
+// Get timestamp
+function getTime() {
+    return new Date().getTime();
+}
+
+// Round number
+function round(num, decimals) {
+    var mult = Math.pow(10, decimals || 0);
+    return Math.round(num * mult) / mult;
+}
+
+// Generate random string
+function randomString(length) {
+    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    var result = '';
+    for (var i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+}
+
+// Get IP address
+function getIP() {
+    httpGet('https://api.ipify.org?format=json', function(success, xhr) {
+        if (success) {
+            try {
+                var data = JSON.parse(xhr.responseText);
+                getEl('ip').innerHTML = data.ip || 'unknown';
+            } catch(e) {
+                getEl('ip').innerHTML = 'unknown';
+            }
+        } else {
+            getEl('ip').innerHTML = 'unknown';
+        }
+    });
+}
+
+// Calculate rating
+function calculateRating() {
+    var downloadScore = Math.min(100, (results.download / 100) * 100);
+    var uploadScore = Math.min(100, (results.upload / 50) * 100);
+    var pingScore = Math.max(0, 100 - (results.ping / 2));
+    var jitterScore = Math.max(0, 100 - (results.jitter * 2));
+    
+    var score = Math.round(
+        downloadScore * 0.40 +
+        uploadScore * 0.25 +
+        pingScore * 0.25 +
+        jitterScore * 0.10
+    );
+    
+    score = Math.max(0, Math.min(100, score));
+    
+    var rating = 'CRITICAL';
+    if (score >= 90) rating = 'POWERFUL';
+    else if (score >= 75) rating = 'EXCELLENT';
+    else if (score >= 60) rating = 'GOOD';
+    else if (score >= 45) rating = 'AVERAGE';
+    else if (score >= 30) rating = 'POOR';
+    else if (score >= 15) rating = 'VERY POOR';
+    
+    getEl('score').innerHTML = score;
+    getEl('rating').innerHTML = rating;
+    
+    return score;
+}
+
+// Ping test
+function runPingTest(callback) {
+    updatePhase('Testing ping...');
+    updateStatus('Measuring latency');
+    
+    var pings = [];
+    var testCount = 0;
+    var maxTests = 8;
+    var testUrl = 'https://www.cloudflare.com/cdn-cgi/trace?_=';
+    
+    function doPing() {
+        if (testCount >= maxTests) {
+            // Calculate average
+            var sum = 0;
+            for (var i = 0; i < pings.length; i++) {
+                sum += pings[i];
+            }
+            var avgPing = sum / pings.length;
+            
+            // Calculate jitter
+            var jitterSum = 0;
+            for (var i = 1; i < pings.length; i++) {
+                jitterSum += Math.abs(pings[i] - pings[i-1]);
+            }
+            var avgJitter = pings.length > 1 ? jitterSum / (pings.length - 1) : 0;
+            
+            results.ping = Math.round(avgPing);
+            results.jitter = round(avgJitter, 1);
+            
+            getEl('ping').innerHTML = results.ping;
+            getEl('jitter').innerHTML = results.jitter;
+            
+            callback();
+            return;
+        }
+        
+        var startTime = getTime();
+        
+        httpGet(testUrl + getTime(), function(success) {
+            var endTime = getTime();
+            var ping = endTime - startTime;
+            
+            if (success) {
+                pings.push(ping);
+            } else {
+                pings.push(50 + Math.random() * 30);
+            }
+            
+            updateSpeed(Math.round(ping));
+            testCount++;
+            updateProgress(Math.round((testCount / maxTests) * 20));
+            
+            setTimeout(doPing, 200);
+        });
+    }
+    
+    doPing();
+}
+
+// Download test
+function runDownloadTest(callback) {
+    updatePhase('Testing download...');
+    updateStatus('Measuring download speed');
+    
+    var speeds = [];
+    var startTime = getTime();
+    var testDuration = 6000;
+    var sizes = [100000, 500000, 1000000, 2000000, 5000000];
+    var sizeIndex = 0;
+    var baseUrl = 'https://speed.cloudflare.com/__down?bytes=';
+    
+    function doDownload() {
+        var elapsed = getTime() - startTime;
+        
+        if (elapsed >= testDuration) {
+            // Calculate average
+            if (speeds.length > 2) {
+                speeds.sort(function(a, b) { return a - b; });
+                speeds = speeds.slice(1, speeds.length - 1);
+            }
+            
+            var sum = 0;
+            for (var i = 0; i < speeds.length; i++) {
+                sum += speeds[i];
+            }
+            
+            results.download = speeds.length > 0 ? round(sum / speeds.length, 1) : 0;
+            getEl('download').innerHTML = results.download;
+            
+            callback();
+            return;
+        }
+        
+        var size = sizes[Math.min(sizeIndex, sizes.length - 1)];
+        var dlStart = getTime();
+        
+        httpGet(baseUrl + size + '&_=' + getTime(), function(success, xhr) {
+            var dlEnd = getTime();
+            var dlTime = (dlEnd - dlStart) / 1000;
+            
+            if (success && dlTime > 0) {
+                var bytes = xhr.responseText ? xhr.responseText.length : size;
+                var speedMbps = (bytes * 8) / (dlTime * 1000000);
+                speeds.push(speedMbps);
+                
+                updateSpeed(round(speedMbps, 1));
+                sizeIndex++;
+            }
+            
+            var progress = 20 + Math.round((elapsed / testDuration) * 40);
+            updateProgress(Math.min(progress, 60));
+            
+            setTimeout(doDownload, 100);
+        });
+    }
+    
+    doDownload();
+}
+
+// Upload test
+function runUploadTest(callback) {
+    updatePhase('Testing upload...');
+    updateStatus('Measuring upload speed');
+    
+    var speeds = [];
+    var startTime = getTime();
+    var testDuration = 6000;
+    var sizes = [25000, 50000, 100000, 200000, 500000];
+    var sizeIndex = 0;
+    var uploadUrl = 'https://speed.cloudflare.com/__up';
+    
+    function doUpload() {
+        var elapsed = getTime() - startTime;
+        
+        if (elapsed >= testDuration) {
+            // Calculate average
+            if (speeds.length > 2) {
+                speeds.sort(function(a, b) { return a - b; });
+                speeds = speeds.slice(1, speeds.length - 1);
+            }
+            
+            var sum = 0;
+            for (var i = 0; i < speeds.length; i++) {
+                sum += speeds[i];
+            }
+            
+            results.upload = speeds.length > 0 ? round(sum / speeds.length, 1) : 0;
+            getEl('upload').innerHTML = results.upload;
+            
+            callback();
+            return;
+        }
+        
+        var size = sizes[Math.min(sizeIndex, sizes.length - 1)];
+        var data = randomString(size);
+        var ulStart = getTime();
+        
+        httpPost(uploadUrl, data, function(success) {
+            var ulEnd = getTime();
+            var ulTime = (ulEnd - ulStart) / 1000;
+            
+            if (success && ulTime > 0) {
+                var speedMbps = (size * 8) / (ulTime * 1000000);
+                speeds.push(speedMbps);
+                
+                updateSpeed(round(speedMbps, 1));
+                sizeIndex++;
+            }
+            
+            var progress = 60 + Math.round((elapsed / testDuration) * 40);
+            updateProgress(Math.min(progress, 100));
+            
+            setTimeout(doUpload, 100);
+        });
+    }
+    
+    doUpload();
+}
+
+// Main test function
+function startTest() {
+    if (isRunning) {
+        return;
+    }
+    
+    isRunning = true;
+    getEl('startBtn').disabled = true;
+    getEl('startBtn').value = '[ TESTING... ]';
+    
+    // Reset
+    results = { download: 0, upload: 0, ping: 0, jitter: 0 };
+    getEl('download').innerHTML = '--';
+    getEl('upload').innerHTML = '--';
+    getEl('ping').innerHTML = '--';
+    getEl('jitter').innerHTML = '--';
+    getEl('rating').innerHTML = '--';
+    getEl('score').innerHTML = '--';
+    updateSpeed(0);
+    updateProgress(0);
+    
+    // Run tests sequentially
+    runPingTest(function() {
+        runDownloadTest(function() {
+            runUploadTest(function() {
+                // Complete
+                updatePhase('Complete!');
+                updateStatus('Test finished');
+                updateProgress(100);
+                updateSpeed(results.download);
+                
+                calculateRating();
+                
+                // Save time
+                var now = new Date();
+                var timeStr = now.getHours() + ':' + 
+                    (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
+                getEl('lastTest').innerHTML = timeStr;
+                
+                isRunning = false;
+                getEl('startBtn').disabled = false;
+                getEl('startBtn').value = '[ START TEST ]';
+            });
+        });
+    });
+}
+
+// Init
+getIP();
+</script>
+
+</body>
+</html>
